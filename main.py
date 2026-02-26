@@ -46,16 +46,30 @@ def execute_python_code(code: str) -> dict:
         sys.stdout = old_stdout
 
 
-def extract_error_line(traceback_str: str) -> List[int]:
+def extract_error_line(traceback_text: str) -> List[int]:
     """
-    Extract the most relevant error line from traceback.
-    We specifically look for: File "<string>", line X
+    Extract only the actual failing line from traceback.
+    Works reliably for Render environment.
     """
-    matches = re.findall(r'File "<string>", line (\d+)', traceback_str)
 
-    if matches:
-        # Return the last occurrence (actual error location)
-        return [int(matches[-1])]
+    if "Traceback" not in traceback_text:
+        return []
+
+    lines = traceback_text.splitlines()
+
+    error_line = None
+
+    for line in lines:
+        if 'File "<string>"' in line:
+            parts = line.split("line ")
+            if len(parts) > 1:
+                try:
+                    error_line = int(parts[1].split(",")[0])
+                except:
+                    pass
+
+    if error_line is not None:
+        return [error_line]
 
     return []
 
@@ -64,17 +78,9 @@ def extract_error_line(traceback_str: str) -> List[int]:
 def code_interpreter(request: CodeRequest):
     execution_result = execute_python_code(request.code)
 
-    # If no error occurred
     if execution_result["success"]:
-        return CodeResponse(
-            error=[],
-            result=execution_result["output"],
-        )
+        return CodeResponse(error=[], result=execution_result["output"])
 
-    # If error occurred → extract line from traceback
     error_lines = extract_error_line(execution_result["output"])
 
-    return CodeResponse(
-        error=error_lines,
-        result=execution_result["output"],
-    )
+    return CodeResponse(error=error_lines, result=execution_result["output"])
