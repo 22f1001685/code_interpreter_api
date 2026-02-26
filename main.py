@@ -15,12 +15,12 @@ from openai import OpenAI
 AIPIPE_API_KEY = os.getenv("AIPIPE_API_KEY")
 
 
-app = FastAPI()
+app = FastAPI(root_path="")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
