@@ -4,7 +4,6 @@ from io import StringIO
 from typing import List
 import os
 import json
-import re
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,13 +13,12 @@ from openai import OpenAI
 
 AIPIPE_API_KEY = os.getenv("AIPIPE_API_KEY")
 
-
-app = FastAPI(root_path="")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -59,9 +57,11 @@ def analyze_error_with_ai(code: str, tb: str) -> List[int]:
     prompt = f"""
 You are a Python debugger.
 
-Return ONLY valid JSON:
-
+Return ONLY valid JSON in this format:
 {{"error_lines": [line_numbers]}}
+
+Line numbers start from 1.
+Only return the line where the actual exception occurred.
 
 CODE:
 {code}
@@ -76,26 +76,43 @@ TRACEBACK:
         temperature=0,
     )
 
-    text = response.choices[0].message.content
+    text = response.choices[0].message.content.strip()
 
+    # Strict JSON parsing only
     try:
         data = json.loads(text)
-        return data.get("error_lines", [])
+        if isinstance(data.get("error_lines"), list):
+            return data["error_lines"]
+        return []
     except Exception:
-        nums = re.findall(r"\d+", text)
-        return [int(n) for n in nums] if nums else []
+        # If model returns invalid JSON, return empty to avoid false positives
+        return []
 
 
 @app.post("/code-interpreter", response_model=CodeResponse)
 def code_interpreter(request: CodeRequest):
     execution_result = execute_python_code(request.code)
 
+    # ✅ Only call AI if execution actually failed
     if execution_result["success"]:
-        return CodeResponse(error=[], result=execution_result["output"])
+        return CodeResponse(
+            error=[],
+            result=execution_result["output"],
+        )
 
     error_lines = analyze_error_with_ai(
         request.code,
         execution_result["output"],
     )
 
-    return CodeResponse(error=error_lines, result=execution_result["output"])
+    return CodeResponse(
+        error=error_lines,
+        result=execution_result["output"],
+    )
+
+# ===============================
+# Health check
+# ===============================
+@app.get("/")
+def health():
+    return {"status": "ok"}
