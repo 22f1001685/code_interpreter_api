@@ -34,14 +34,13 @@ def execute_python_code(code: str) -> dict:
     sys.stdout = StringIO()
 
     try:
-        exec(code)
+        # Run in isolated namespace
+        exec(code, {})
         output = sys.stdout.getvalue()
         return {"success": True, "output": output}
-
     except Exception:
         output = traceback.format_exc()
         return {"success": False, "output": output}
-
     finally:
         sys.stdout = old_stdout
 
